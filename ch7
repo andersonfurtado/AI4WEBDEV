@@ -1,0 +1,80 @@
+# Install the Surprise library
+!pip install scikit-surprise
+
+import pandas as pd
+from surprise import Dataset, Reader, SVD
+from surprise.model_selection import train_test_split
+from surprise import accuracy
+import urllib.request
+import zipfile
+import os
+
+# Download the MovieLens dataset
+url = 'https://files.grouplens.org/datasets/movielens/ml-latest-small.zip'
+urllib.request.urlretrieve(url, 'ml-latest-small.zip')
+
+# Unzip the downloaded file
+with zipfile.ZipFile('ml-latest-small.zip', 'r') as zip_ref:
+    zip_ref.extractall()
+
+# Full path to the files
+movies_file = os.path.join('ml-latest-small', 'movies.csv')
+ratings_file = os.path.join('ml-latest-small', 'ratings.csv')
+
+# Load the data
+movies = pd.read_csv(movies_file)
+ratings = pd.read_csv(ratings_file)
+
+# Prepare the data for the Surprise library
+reader = Reader(rating_scale=(0.5, 5.0))
+data = Dataset.load_from_df(ratings[['userId', 'movieId', 'rating']], reader)
+
+# Split the data into training and test sets
+trainset, testset = train_test_split(data, test_size=0.2)
+
+# Train the SVD model
+algo = SVD()
+algo.fit(trainset)
+
+# Make predictions on the test set
+predictions = algo.test(testset)
+
+# Evaluate the model's performance
+rmse = accuracy.rmse(predictions)
+mae = accuracy.mae(predictions)
+
+print(f'RMSE: {rmse}')
+print(f'MAE: {mae}')
+
+# Function to recommend movies in real-time using SVD model
+def get_movie_recommendations(algo, movie_title, movies, ratings, num_recommendations=5):
+    # Get the movie_id for the given movie title
+    movie_id = movies[movies['title'] == movie_title]['movieId'].values[0]
+    
+    # Get all users who rated this movie
+    users_who_rated_movie = ratings[ratings['movieId'] == movie_id]['userId'].unique()
+    
+    # Predict ratings for all other movies by these users
+    other_movie_ids = ratings[ratings['userId'].isin(users_who_rated_movie)]['movieId'].unique()
+    
+    # Predict ratings for each movie
+    predicted_ratings = []
+    for movie in other_movie_ids:
+        if movie != movie_id:
+            predicted_ratings.append((movie, algo.predict(uid=0, iid=movie).est))
+    
+    # Sort by predicted rating
+    predicted_ratings.sort(key=lambda x: x[1], reverse=True)
+    
+    # Get top N movie recommendations
+    top_n_movies = [movie_id for movie_id, rating in predicted_ratings[:num_recommendations]]
+    
+    # Get movie titles
+    recommended_movie_titles = movies[movies['movieId'].isin(top_n_movies)]['title'].tolist()
+    
+    return recommended_movie_titles
+
+# Example usage
+recommended_movies = get_movie_recommendations(algo, 'Toy Story (1995)', movies, ratings)
+print("Recommended movies for 'Toy Story (1995)':")
+print(recommended_movies)
