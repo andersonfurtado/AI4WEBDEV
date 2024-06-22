@@ -1,0 +1,2 @@
+# Ignore the sensitive configuration file
+config.txt
